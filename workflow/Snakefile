@@ -109,7 +109,7 @@ rule srst2:
         'results/sample__mlst__species__results.txt',
     params:
         extra='--forward _R1 --reverse _R2 --mlst_delimiter "_"',
-        output='results/sample',
+        prefix='results/sample',
         species_alias='',
     threads: 8
     resources:
@@ -122,13 +122,13 @@ rule srst2:
         '''
         srst2 \
           --input_pe {input.pe} \
-          --output {params.output} \
+          --output {params.prefix} \
           {params.extra} \
           --mlst_db '{input.db}' \
           --mlst_definitions '{input.prof}' \
           --threads {threads}
         
-        mv '{params.output}__mlst__{params.species_alias}__results.txt' {output}
+        mv '{params.prefix}__mlst__{params.species_alias}__results.txt' {output}
         '''
 
 
