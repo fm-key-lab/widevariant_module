@@ -115,9 +115,11 @@ rule srst2:
     resources:
         cpus_per_task=8,
         mem_mb=4_096,
-        runtime=60,
+        runtime=60
     container:
         'docker://staphb/srst2'
+    envmodules:
+        'srst2/0.2.0'
     shell:
         '''
         srst2 \
