@@ -118,8 +118,6 @@ rule srst2:
         runtime=60
     container:
         'docker://staphb/srst2'
-    envmodules:
-        'srst2/0.2.0'
     shell:
         '''
         srst2 \
