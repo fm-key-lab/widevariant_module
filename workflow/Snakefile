@@ -1,0 +1,175 @@
+# NOTE: Intended to be used as a module.
+
+envvars:
+    "OMP_PLACES",
+    "NXF_SINGULARITY_CACHEDIR",
+    "APPTAINERENV_TMPDIR",
+    "APPTAINERENV_NXF_DEBUG"
+
+
+ruleorder: legacy_map > bactmap > eager
+
+
+rule all:
+    input:
+        'results/mapping.done',
+        'results/sample__mlst__species__results.txt',
+        'results/prefix.final_tree.tre',
+
+
+# TODO: Figure out support for custom meta-wrappers (https://github.com/snakemake/snakemake-wrappers/issues/3141#issue-2489517092)
+rule legacy_map:
+    output:
+        touch('results/mapping.done'),
+
+
+rule bactmap:
+    """Bacterial DNA mapping and variant-calling using nf-core/bactmap."""
+    input:
+        input='samplesheet.csv',
+        reference='/path/to/reference',
+    output:
+        touch('results/mapping.done'),
+    params:
+        pipeline='bactmap',
+        profile='singularity',
+        nxf='-work-dir results/work',
+        outdir='./results',
+        trim='true',
+    handover: True
+    container:
+        'docker://nfcore/bactmap'
+    wrapper:
+        'https://raw.githubusercontent.com/fm-key-lab/snakemake-wrappers/nf-core/bio/nf-core'
+
+
+rule eager:
+    """Ancient DNA mapping using nf-core/eager."""
+    input:
+        input='samplesheet.csv',
+        reference='/path/to/reference',
+    output:
+        touch('results/mapping.done'),
+    params:
+        pipeline='eager',
+        profile='singularity',
+        nxf='-work-dir results/work',
+        outdir='./results',
+    handover: True
+    container:
+        'docker://nfcore/eager'
+    wrapper:
+        'https://raw.githubusercontent.com/fm-key-lab/snakemake-wrappers/nf-core/bio/nf-core'
+
+
+rule:
+    """Collect mapping output.
+    
+    Collect mapping output such that the sample wildcard can be
+    resolved by downstream rules.
+    """
+    input:
+        'mapping.done'
+    output:
+        touch('results/sample_R1.fastq.gz'),
+        touch('results/sample_R2.fastq.gz'),
+        touch('results/sample.fas')
+    localrule: True
+
+
+rule srst2:
+    """Profile sequence types using srst2.
+
+    Notes
+    -----
+    - `srst2` allows `--use_existing_bowtie2_sam` and `--use_existing_pileup`, but
+        1. uses restrictive pattern matching
+        2. the mapping reference differs from the ST reference, which is only 
+            the core genes; the mapping reference will be of an 'unknown' 
+            (findable) sequence type
+
+    - input may be zipped or not; however, `srst2` will infer this based on 
+        extension and fail if the inferred type differs from actual type.
+    - `--forward` and `--reverse` flags refer to the basename before extension 
+        (i.e., '_R1')
+    - `--use_existing_pileup` is a boolean flag, 
+        `parser.add_argument('--use_existing_pileup', action="store_true" ...`
+    - whatever is passed to `--output` will not be the output; rather, the 
+        output for `--output sample` will be `sample__mlst__<db>__results.txt`
+    """
+    input:
+        pe=multiext(
+            'results/sample',
+            '_R1.fastq.gz',
+            '_R2.fastq.gz',
+        ),
+        db='/path/to/species/species.fasta',
+        prof='/path/to/species/profiles_csv',
+    output:
+        'results/sample__mlst__species__results.txt',
+    params:
+        extra='--forward _R1 --reverse _R2 --mlst_delimiter "_"',
+        output='results/sample',
+        species_alias='',
+    threads: 8
+    resources:
+        cpus_per_task=8,
+        mem_mb=4_096,
+        runtime=60,
+    container:
+        'docker://staphb/srst2'
+    shell:
+        '''
+        srst2 \
+          --input_pe {input.pe} \
+          --output {params.output} \
+          {params.extra} \
+          --mlst_db '{input.db}' \
+          --mlst_definitions '{input.prof}' \
+          --threads {threads}
+        
+        mv '{params.output}__mlst__{params.species_alias}__results.txt' {output}
+        '''
+
+
+rule gubbins:
+    """Remove recombination and build phylogeny using gubbins.
+
+    Notes
+        - Gubbins uses leading period for output filenames, ie `str(input_args.prefix) + ".final_tree.tre"`
+          See https://github.com/nickjcroucher/gubbins/blob/15a0c3ecf4fa9dbc5551dd47563cfccfca4bdf7a/python/gubbins/common.py#L1374-L1388
+    """
+    input:
+        'results/sample.fas',
+    params:
+        f=40,
+        tree_args=" ",
+        t="hybrid"
+    output:
+        'results/prefix.final_tree.tre',
+    resources:
+        nodes=1,
+        runtime=480,
+        cpus_per_task=32,
+        mem_mb=16000
+    container:
+        'docker://sangerpathogens/gubbins'
+    shell:
+        '''
+        export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+        export OMP_PLACES=threads
+
+        OUTPUT_DIR=$(dirname {output})
+        PREFIX=$OUTPUT_DIR/prefix
+
+        # gubbins creates many intermediate files in launch dir
+        cd $OUTPUT_DIR && \
+
+        run_gubbins.py \
+          --prefix $PREFIX \
+          --threads $SLURM_CPUS_PER_TASK \
+          --tree-args "{params.tree_args}" \
+          --filter-percentage {params.f} \
+          --tree-builder {params.t} \
+          $(realpath {input})
+        '''
