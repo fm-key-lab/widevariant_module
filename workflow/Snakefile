@@ -99,27 +99,27 @@ rule srst2:
     """
     input:
         pe=multiext(
-            'results/sample',
+            '/results/sample',
             '_R1.fastq.gz',
             '_R2.fastq.gz',
         ),
         db='/path/to/species/species.fasta',
         prof='/path/to/species/profiles_csv',
     output:
-        'results/sample__mlst__species__results.txt',
+        '/results/sample__mlst__species__results.txt',
     params:
         extra='--forward _R1 --reverse _R2 --mlst_delimiter "_"',
-        prefix='results/sample',
+        prefix='/results/sample',
         species_alias='',
-    threads: 8
+    threads: 16
     resources:
-        cpus_per_task=8,
+        cpus_per_task=16,
         mem_mb=4_096,
-        runtime=60
+        runtime=15
     container:
         'docker://staphb/srst2'
     shell:
-        '''
+        """
         srst2 \
           --input_pe {input.pe} \
           --output {params.prefix} \
@@ -129,7 +129,7 @@ rule srst2:
           --threads {threads}
         
         mv '{params.prefix}__mlst__{params.species_alias}__results.txt' {output}
-        '''
+        """
 
 
 rule gubbins:
