@@ -17,6 +17,10 @@ rule all:
         'results/prefix.final_tree.tre',
 
 
+checkpoint samplesheet:
+    output: touch('samplesheet.csv')
+
+
 # TODO: Figure out support for custom meta-wrappers (https://github.com/snakemake/snakemake-wrappers/issues/3141#issue-2489517092)
 rule legacy_map:
     output:
@@ -71,9 +75,9 @@ rule:
     input:
         'mapping.done'
     output:
-        touch('results/sample_R1.fastq.gz'),
-        touch('results/sample_R2.fastq.gz'),
-        touch('results/sample.fas')
+        touch('results/trimmed/{sample}_R1.fastq.gz'),
+        touch('results/trimmed/{sample}_R2.fastq.gz'),
+        touch('results/variants/{sample}.vcf.gz')
     localrule: True
 
 
@@ -99,17 +103,17 @@ rule srst2:
     """
     input:
         pe=multiext(
-            '/results/sample',
+            'results/trimmed/{sample}',
             '_R1.fastq.gz',
             '_R2.fastq.gz',
         ),
         db='/path/to/species/species.fasta',
         prof='/path/to/species/profiles_csv',
     output:
-        '/results/sample__mlst__species__results.txt',
+        'results/srst2/{sample}_results.txt',
     params:
         extra='--forward _R1 --reverse _R2 --mlst_delimiter "_"',
-        prefix='/results/sample',
+        prefix='results/{wildcards.sample}',
         species_alias='',
     threads: 16
     resources:
@@ -127,9 +131,30 @@ rule srst2:
           --mlst_db '{input.db}' \
           --mlst_definitions '{input.prof}' \
           --threads {threads}
-        
+
+        rm -f '{params.prefix}__{sample}.{params.species_alias}.pileup'
+        rm -f '{params.prefix}__{sample}.{params.species_alias}.scores'
+        rm -f '{params.prefix}__{sample}.{params.species_alias}.sorted.bam'
+
         mv '{params.prefix}__mlst__{params.species_alias}__results.txt' {output}
         """
+
+
+def msa_input(wildcards):
+    def read_samplesheet():
+        pass
+    
+    samples = read_samplesheet(
+        checkpoint.samplesheet.output[0]
+    )['sample_id'].str.tolist()
+
+    return expand(
+        [
+            'results/variants/{sample}.vcf.gz',
+            'results/srst2/{sample}_results.txt'
+        ],
+        sample=samples
+    )
 
 
 rule gubbins:
@@ -140,7 +165,7 @@ rule gubbins:
           See https://github.com/nickjcroucher/gubbins/blob/15a0c3ecf4fa9dbc5551dd47563cfccfca4bdf7a/python/gubbins/common.py#L1374-L1388
     """
     input:
-        'results/sample.fas',
+        msa_input
     params:
         f=40,
         tree_args=" ",
