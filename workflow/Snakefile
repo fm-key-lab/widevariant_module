@@ -23,12 +23,15 @@ checkpoint samplesheet:
 
 # TODO: Figure out support for custom meta-wrappers (https://github.com/snakemake/snakemake-wrappers/issues/3141#issue-2489517092)
 rule legacy_map:
+    """Original WideVariant bacterial DNA mapping and variant-calling.
+    """
     output:
         touch('results/mapping.done'),
 
 
 rule bactmap:
-    """Bacterial DNA mapping and variant-calling using nf-core/bactmap."""
+    """Bacterial DNA mapping and variant-calling using nf-core/bactmap.
+    """
     input:
         input='samplesheet.csv',
         reference='/path/to/reference',
@@ -48,7 +51,8 @@ rule bactmap:
 
 
 rule eager:
-    """Ancient DNA mapping using nf-core/eager."""
+    """Ancient DNA mapping using nf-core/eager.
+    """
     input:
         input='samplesheet.csv',
         reference='/path/to/reference',
